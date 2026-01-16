@@ -971,8 +971,8 @@ def main():
                 CallbackQueryHandler(confirm_trade, pattern='^confirm_trade$')
             ]
         },
-        fallbacks=[CallbackQueryHandler(cancel, pattern='^cancel$')],
-        per_message=False
+        fallbacks=[CallbackQueryHandler(cancel, pattern='^cancel$')]
+       
     )
     
     # Conversation handler for update trade
@@ -993,8 +993,8 @@ def main():
             ],
             UPDATE_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, update_input_received)]
         },
-        fallbacks=[CallbackQueryHandler(cancel, pattern='^cancel$')],
-        per_message=False
+        fallbacks=[CallbackQueryHandler(cancel, pattern='^cancel$')]
+      
     )
     
     # Conversation handler for report
@@ -1007,8 +1007,8 @@ def main():
                 CallbackQueryHandler(report_start, pattern='^report$')
             ]
         },
-        fallbacks=[CallbackQueryHandler(cancel, pattern='^cancel$')],
-        per_message=False
+        fallbacks=[CallbackQueryHandler(cancel, pattern='^cancel$')]
+        
     )
     
     # Add handlers
