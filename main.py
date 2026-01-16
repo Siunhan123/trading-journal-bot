@@ -558,24 +558,30 @@ async def action_cancel_trade(update: Update, context: ContextTypes.DEFAULT_TYPE
 # ... (phần trên)
 
 async def update_input_received(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Process input for update action"""
     text = update.message.text.strip()
     action = context.user_data.get('action')
     trade_id = context.user_data.get('selected_trade_id')
     
     try:
         if action == 'win' or action == 'loss':
-            pnl = float(text)
+            pnl = float(text)  # User enters 2.5 → Save 2.5, NOT 25
+            
             sheets.update_trade_by_id(trade_id, {
                 'Trạng thái': 'Closed',
-                'PnL_R': pnl * 10  # ← LỖI: NHÂN 10
+                'PnL_R': pnl  # FIX: No multiplication
             })
-
+            
+            emoji = "✅" if pnl > 0 else "❌"
+            await update.message.reply_text(
+                f"{emoji} Trade #{trade_id} đã đóng\nPnL: {pnl}R",
+                reply_markup=main_menu_kb()
+            )
             
         elif action == 'movesl':
             new_sl = float(text)
             trade = sheets.get_trade_by_id(trade_id)
             
-            # Calculate new risk
             entry = float(trade['Entry'])
             old_sl = float(trade['SL'])
             old_risk = float(trade['Risk%'])
@@ -585,75 +591,72 @@ async def update_input_received(update: Update, context: ContextTypes.DEFAULT_TY
             
             sheets.update_trade_by_id(trade_id, {
                 'SL': new_sl,
-                'Risk%': new_risk
+                'Risk%': new_risk  # FIX: No multiplication
             })
             
-            risk_status = "🎉 Free risk!" if new_risk == 0 else f"Risk mới: {new_risk}%"
-            
+            risk_status = "Free risk!" if new_risk <= 0 else f"Risk mới: {new_risk}%"
             await update.message.reply_text(
-                f"📈 *SL đã nâng lên {new_sl}*\n\n"
-                f"{risk_status}",
-                reply_markup=main_menu_kb(),
-                parse_mode='Markdown'
+                f"✅ SL nâng lên {new_sl}\n{risk_status}",
+                reply_markup=main_menu_kb()
             )
             
         elif action == 'settp':
             tp = float(text)
             sheets.update_trade_by_id(trade_id, {'TP': tp})
             await update.message.reply_text(
-                f"🎯 *TP đã set: {tp}*",
-                reply_markup=main_menu_kb(),
-                parse_mode='Markdown'
+                f"✅ TP đã set: {tp}",
+                reply_markup=main_menu_kb()
             )
             
         elif action == 'partial':
             parts = text.split()
             if len(parts) != 2:
                 await update.message.reply_text(
-                    "❌ Sai format! Nhập: `% PnL`\nVD: `50 1.2`",
+                    "❌ Sai format! Nhập: `50 1.2` (50% + 1.2R)",
                     parse_mode='Markdown'
                 )
                 return UPDATE_INPUT
             
             percent = float(parts[0])
-            pnl = float(parts[1])
+            pnl = float(parts[1])  # FIX: No multiplication
             
             trade = sheets.get_trade_by_id(trade_id)
             note = trade.get('Ghi chú', '')
-            new_note = f"{note}\nChốt {percent}%: +{pnl}R".strip()
+            new_note = f"{note}\n✂️ {percent}% @ {pnl}R".strip()
             
             sheets.update_trade_by_id(trade_id, {'Ghi chú': new_note})
             
             await update.message.reply_text(
-                f"💰 *Đã chốt {percent}% với +{pnl}R*\n\n"
-                f"Trade #{trade_id} vẫn đang mở",
-                reply_markup=main_menu_kb(),
-                parse_mode='Markdown'
+                f"✅ Đã chốt {percent}% với {pnl}R\nTrade #{trade_id} vẫn đang mở",
+                reply_markup=main_menu_kb()
             )
             
         elif action == 'editreason':
             new_reason = text
             sheets.update_trade_by_id(trade_id, {'Lý do': new_reason})
             await update.message.reply_text(
-                "📝 *Lý do đã cập nhật*",
-                reply_markup=main_menu_kb(),
-                parse_mode='Markdown'
+                "✅ Lý do đã cập nhật",
+                reply_markup=main_menu_kb()
             )
         
+        # FIX: Clear user_data and END conversation
+        context.user_data.clear()
         return ConversationHandler.END
         
     except ValueError:
         await update.message.reply_text(
-            "❌ Giá trị không hợp lệ! Nhập lại:",
+            "❌ Giá trị không hợp lệ! Nhập lại số",
             reply_markup=cancel_kb()
         )
         return UPDATE_INPUT
+        
     except Exception as e:
         logger.error(f"Error updating trade: {e}")
         await update.message.reply_text(
-            f"❌ Lỗi: {str(e)}",
+            f"❌ Lỗi: {e}",
             reply_markup=main_menu_kb()
         )
+        context.user_data.clear()
         return ConversationHandler.END
 
 # === REPORT FLOW ===
