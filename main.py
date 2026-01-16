@@ -563,19 +563,20 @@ async def update_input_received(update: Update, context: ContextTypes.DEFAULT_TY
     trade_id = context.user_data.get('selected_trade_id')
     
     try:
-        if action == 'win' or action == 'loss':
-            pnl = float(text)
-            sheets.update_trade_by_id(trade_id, {
-                'Trạng thái': 'Closed',
-                'PnL_R': pnl
-            })
-            emoji = "✅" if pnl > 0 else "❌"
-            await update.message.reply_text(
-                f"{emoji} *Trade #{trade_id} đã đóng*\n"
-                f"PnL: {pnl}R",
-                reply_markup=main_menu_kb(),
-                parse_mode='Markdown'
-            )
+            if action == 'win' or action == 'loss':
+        # FIX: GIỮ NGUYÊN GIÁ TRỊ USER NHẬP, KHÔNG NHÂN/CHIA
+        pnl = float(text)  # Nếu user nhập 2.5 → lưu 2.5
+        sheets.update_trade_by_id(trade_id, {
+            'Trạng thái': 'Closed',
+            'PnL_R': pnl  # GHI ĐÚ 2.5, KHÔNG PHẢI 25
+        })
+        emoji = "✅" if pnl > 0 else "❌"
+        await update.message.reply_text(
+            f"{emoji} Trade #{trade_id} đã đóng\nPnL: {pnl}R",
+            reply_markup=main_menu_kb(),
+            parse_mode='Markdown'
+        )
+
             
         elif action == 'movesl':
             new_sl = float(text)
@@ -786,59 +787,56 @@ async def detail_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # === OPEN RISK ===
 
 async def open_risk(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show current open risk"""
     query = update.callback_query
     await query.answer()
     
-    risk_data = sheets.get_open_risk()
-    
-    if risk_data['count'] == 0:
+    try:
+        risk_data = sheets.get_open_risk()
+        
+        if risk_data['count'] == 0:
+            msg = "📊 RISK ĐANG MỞ\n\n"
+            msg += "✅ Không có lệnh đang mở\n"
+            msg += "TỔNG RISK: 0%"
+        else:
+            msg = "📊 RISK ĐANG MỞ\n\n"
+            msg += f"🎯 TỔNG RISK: {risk_data['total']}%\n"
+            msg += f"📝 {risk_data['count']} lệnh\n\n"
+            
+            # Theo thị trường
+            msg += "📍 THEO THỊ TRƯỜNG:\n"
+            markets = ['Hàng hóa', 'Tiền tệ', 'Stock Việt', 'Stock Mỹ']
+            for market in markets:
+                risk = risk_data['market_count'].get(market, 0)
+                if risk > 0:
+                    msg += f"  • {market:12} {risk:5.2f}%\n"
+            
+            msg += "\n📊 THEO KIỂU TRADE:\n"
+            styles = ['Swing', 'Daytrading', 'Scalping']
+            for style in styles:
+                risk = risk_data['style_count'].get(style, 0)
+                if risk > 0:
+                    msg += f"  • {style:12} {risk:5.2f}%\n"
+            
+            # Liệt kê trades (giới hạn 10)
+            msg += "\n📋 CHI TIẾT CÁC LỆNH:\n"
+            for idx, trade in enumerate(risk_data['trades'][:10], 1):
+                msg += f"{idx}. {trade.get('Ticker')} {trade.get('Hướng')} "
+                msg += f"{trade.get('Entry')} | Risk: {trade.get('Risk%')}%\n"
+        
+        keyboard = [[InlineKeyboardButton("🔄 Refresh", callback_data='open_risk')],
+                    [InlineKeyboardButton("« Menu", callback_data='main_menu')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(text=msg, reply_markup=reply_markup, parse_mode='Markdown')
+        
+    except Exception as e:
+        print(f"❌ Error in open_risk: {e}")
         await query.edit_message_text(
-            "✅ *Không có lệnh đang mở*\n"
-            "💰 TỔNG RISK: 0%",
-            reply_markup=main_menu_kb(),
-            parse_mode='Markdown'
+            text=f"❌ Lỗi: {e}\n\nQuay lại /start",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Menu", callback_data='main_menu')]])
         )
-        return ConversationHandler.END
-    
-    report = (
-        "⚠️ *RISK ĐANG MỞ*\n"
-        "═══════════════════\n\n"
-        f"💰 *TỔNG RISK: {risk_data['total']}%* ({risk_data['count']} lệnh)\n\n"
-        "📊 *THEO THỊ TRƯỜNG:*\n"
-        "────────────────────\n"
-    )
-    
-    markets = ['Hàng hóa', 'Tiền tệ', 'Stock Việt', 'Stock Mỹ']
-    for market in markets:
-        risk = risk_data['by_market'].get(market, 0)
-        count = risk_data['market_count'].get(market, 0)
-        report += f"• {market:12} {risk:5.2f}% ({count} lệnh)\n"
-    
-    report += "\n⏱️ *THEO KIỂU TRADE:*\n────────────────────\n"
-    
-    styles = ['Swing', 'Daytrading', 'Scalping']
-    for style in styles:
-        risk = risk_data['by_style'].get(style, 0)
-        count = risk_data['style_count'].get(style, 0)
-        report += f"• {style:12} {risk:5.2f}% ({count} lệnh)\n"
-    
-    report += "\n📋 *CHI TIẾT CÁC LỆNH:*\n────────────────────\n"
-    
-    for idx, trade in enumerate(risk_data['trades'][:10], 1):  # Limit 10 trades
-        report += (
-            f"{idx}. {trade.get('Ticker')} {trade.get('Hướng')} @ {trade.get('Entry')} "
-            f"| Risk: {trade.get('Risk%')}%\n"
-        )
-    
-    await query.edit_message_text(
-        report,
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔄 Refresh", callback_data="open_risk"),
-            InlineKeyboardButton("🔙 Menu", callback_data="main_menu")
-        ]]),
-        parse_mode='Markdown'
-    )
-    return ConversationHandler.END
+
 
 # === SCHEDULED RISK REPORT ===
 
@@ -846,61 +844,55 @@ async def send_scheduled_risk_report(application: Application):
     """Send risk report at scheduled times"""
     try:
         risk_data = sheets.get_open_risk()
-        
         tz = pytz.timezone(TIMEZONE)
         now = datetime.now(tz)
-        time_str = now.strftime('%d/%m/%Y - %H:%M JST')
+        time_str = now.strftime("%d/%m/%Y - %H:%M JST")
         
         if risk_data['count'] == 0:
-            report = (
-                "⚠️ *BÁO CÁO RISK ĐANG MỞ*\n"
-                f"🕐 {time_str}\n\n"
-                "✅ Không có lệnh đang mở\n"
-                "💰 TỔNG RISK: 0%"
-            )
+            report = "📊 BÁO CÁO RISK ĐANG MỞ\n"
+            report += f"🕒 {time_str}\n\n"
+            report += "✅ Không có lệnh đang mở\n"
+            report += "TỔNG RISK: 0%"
         else:
-            report = (
-                "⚠️ *BÁO CÁO RISK ĐANG MỞ*\n"
-                f"🕐 {time_str}\n"
-                "═══════════════════════\n\n"
-                f"💰 *TỔNG RISK: {risk_data['total']}%* ({risk_data['count']} lệnh)\n\n"
-                "📊 *THEO THỊ TRƯỜNG:*\n"
-                "────────────────────\n"
-            )
+            report = "📊 BÁO CÁO RISK ĐANG MỞ\n"
+            report += f"🕒 {time_str}\n\n"
+            report += f"🎯 TỔNG RISK: {risk_data['total']}%\n"
+            report += f"📝 {risk_data['count']} lệnh\n\n"
             
+            # Theo thị trường
+            report += "📍 THEO THỊ TRƯỜNG:\n"
             markets = ['Hàng hóa', 'Tiền tệ', 'Stock Việt', 'Stock Mỹ']
             for market in markets:
-                risk = risk_data['by_market'].get(market, 0)
-                count = risk_data['market_count'].get(market, 0)
-                report += f"• {market:12} {risk:5.2f}% ({count} lệnh)\n"
+                risk = risk_data['market_count'].get(market, 0)
+                if risk > 0:
+                    report += f"  • {market:12} {risk:5.2f}%\n"
             
-            report += "\n⏱️ *THEO KIỂU TRADE:*\n────────────────────\n"
-            
+            report += "\n📊 THEO KIỂU TRADE:\n"
             styles = ['Swing', 'Daytrading', 'Scalping']
             for style in styles:
-                risk = risk_data['by_style'].get(style, 0)
-                count = risk_data['style_count'].get(style, 0)
-                report += f"• {style:12} {risk:5.2f}% ({count} lệnh)\n"
+                risk = risk_data['style_count'].get(style, 0)
+                if risk > 0:
+                    report += f"  • {style:12} {risk:5.2f}%\n"
             
-            report += "\n📋 *CÁC LỆNH ĐANG MỞ:*\n────────────────────\n"
-            
+            # Liệt kê lệnh (tối đa 10)
+            report += "\n📋 CÁC LỆNH ĐANG MỞ:\n"
             for idx, trade in enumerate(risk_data['trades'][:10], 1):
-                report += (
-                    f"{idx}. {trade.get('Ticker')} {trade.get('Hướng')} @ {trade.get('Entry')} "
-                    f"| Risk: {trade.get('Risk%')}%\n"
-                )
+                report += f"{idx}. {trade.get('Ticker')} {trade.get('Hướng')} "
+                report += f"{trade.get('Entry')} | Risk: {trade.get('Risk%')}%\n"
             
-            report += "\n📊 Xem chi tiết: /risk"
+            report += "\n💡 Xem chi tiết: /risk"
         
+        # Send to admin
         await application.bot.send_message(
             chat_id=ADMIN_USER_ID,
             text=report,
             parse_mode='Markdown'
         )
-        logger.info(f"Scheduled risk report sent at {time_str}")
+        logger.info(f"✅ Scheduled risk report sent at {time_str}")
         
     except Exception as e:
-        logger.error(f"Error sending scheduled report: {e}")
+        logger.error(f"❌ Error sending scheduled report: {e}")
+
 
 # === CANCEL HANDLER ===
 
