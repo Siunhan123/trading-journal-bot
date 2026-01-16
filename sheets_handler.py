@@ -76,15 +76,17 @@ class SheetsHandler:
         return next_id
     
     def get_pending_trades(self):
-        """Get all pending trades"""
+        """Get all pending trades with correct Risk% parsing"""
         try:
             records = self.sheet.get_all_records()
             pending = []
             for r in records:
                 if r.get('Trạng thái') == 'Pending':
-                    # FIX: Convert Risk% to float
+                    # FIX: Parse Risk% - handle both formats
+                    risk_value = r.get('Risk%', 0)
                     try:
-                        r['Risk%'] = float(r.get('Risk%', 0) or 0)
+                        # If it's already a number, use it directly
+                        r['Risk%'] = float(str(risk_value).replace(',', '.').replace('%', '').strip())
                     except:
                         r['Risk%'] = 0.0
                     pending.append(r)
@@ -92,6 +94,7 @@ class SheetsHandler:
         except Exception as e:
             print(f"❌ Error getting pending trades: {e}")
             return []
+
     
     def get_trade_by_id(self, trade_id):
         """Get trade details by ID"""
@@ -178,22 +181,34 @@ class SheetsHandler:
                 'be': 0
             }
         
+        # Helper function to parse PnL - NO MULTIPLY
+        def parse_pnl(value):
+            if not value:
+                return 0.0
+            try:
+                # Remove comma, percentage, R suffix
+                clean_value = str(value).replace(',', '.').replace('%', '').replace('R', '').replace('r', '').strip()
+                return float(clean_value)
+            except:
+                return 0.0
+        
         # Calculate stats
-        wins = [r for r in closed if float(r.get('PnL_R', 0) or 0) > 0]
-        losses = [r for r in closed if float(r.get('PnL_R', 0) or 0) < 0]
+        wins = [r for r in closed if parse_pnl(r.get('PnL_R', 0)) > 0]
+        losses = [r for r in closed if parse_pnl(r.get('PnL_R', 0)) < 0]
         be_trades = [r for r in closed if r.get('Trạng thái') == 'BE']
         
-        total_pnl = sum([float(r.get('PnL_R', 0) or 0) for r in closed])
+        total_pnl = sum([parse_pnl(r.get('PnL_R', 0)) for r in closed])
         winrate = len(wins) / len(closed) * 100 if closed else 0
         
         return {
             'winrate': round(winrate, 1),
-            'total_pnl': round(total_pnl, 2),
+            'total_pnl': round(total_pnl, 2),  # KHÔNG NHÂN GÌ
             'total_trades': len(closed),
             'wins': len(wins),
             'losses': len(losses),
             'be': len(be_trades)
         }
+
     
     def get_stats_by_category(self, category, start_date=None, end_date=None):
         """Get stats breakdown by category (Thị trường or Kiểu)"""
