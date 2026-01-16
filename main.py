@@ -563,19 +563,12 @@ async def update_input_received(update: Update, context: ContextTypes.DEFAULT_TY
     trade_id = context.user_data.get('selected_trade_id')
     
     try:
-            if action == 'win' or action == 'loss':
-        # FIX: GIỮ NGUYÊN GIÁ TRỊ USER NHẬP, KHÔNG NHÂN/CHIA
-        pnl = float(text)  # Nếu user nhập 2.5 → lưu 2.5
-        sheets.update_trade_by_id(trade_id, {
-            'Trạng thái': 'Closed',
-            'PnL_R': pnl  # GHI ĐÚ 2.5, KHÔNG PHẢI 25
-        })
-        emoji = "✅" if pnl > 0 else "❌"
-        await update.message.reply_text(
-            f"{emoji} Trade #{trade_id} đã đóng\nPnL: {pnl}R",
-            reply_markup=main_menu_kb(),
-            parse_mode='Markdown'
-        )
+        if action == 'win' or action == 'loss':
+            pnl = float(text)
+            sheets.update_trade_by_id(trade_id, {
+                'Trạng thái': 'Closed',
+                'PnL_R': pnl * 10  # ← LỖI: NHÂN 10
+            })
 
             
         elif action == 'movesl':
