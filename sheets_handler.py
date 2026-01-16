@@ -8,20 +8,32 @@ import base64
 
 class SheetsHandler:
     def __init__(self):
-        scope = ['https://spreadsheets.google.com/feeds',
-                 'https://www.googleapis.com/auth/drive']
+    scope = ['https://spreadsheets.google.com/feeds',
+             'https://www.googleapis.com/auth/drive']
+    
+    # Load credentials from ENV VAR FIRST (Railway/Koyeb)
+    creds_json = os.getenv('CREDENTIALS_JSON')
+    if creds_json:
+        try:
+            # Try base64 first
+            creds_dict = json.loads(base64.b64decode(creds_json).decode('utf-8'))
+        except:
+            try:
+                # Try direct JSON
+                creds_dict = json.loads(creds_json)
+            except json.JSONDecodeError:
+                raise ValueError("CREDENTIALS_JSON phải là JSON hợp lệ")
         
-        # Load credentials from environment variable (base64 encoded)
-        creds_json = os.getenv('CREDENTIALS_JSON')
-        if creds_json:
-            creds_dict = json.loads(base64.b64decode(creds_json))
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        else:
-            creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
-        
-        client = gspread.authorize(creds)
-        self.sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
-        self._setup_headers()
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        print("✅ Loaded credentials from ENV var")
+    else:
+        # Fallback local file (dev only)
+        creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+        print("⚠️ Loaded from local credentials.json")
+    
+    client = gspread.authorize(creds)
+    self.sheet = client.open_by_key(SHEET_ID).worksheet(SHEET_NAME)
+    self._setup_headers()
     
     def _setup_headers(self):
         headers = ['ID', 'Timestamp', 'Thị trường', 'Kiểu', 'Hướng', 'Ticker', 
