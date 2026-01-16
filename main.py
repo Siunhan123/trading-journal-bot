@@ -778,12 +778,13 @@ async def detail_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # === OPEN RISK ===
 
 async def open_risk(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show current open risk"""
+    """Show current open risk - with refresh button"""
     query = update.callback_query
-    await query.answer()
+    await query.answer()  # Always answer callback first
     
     try:
         risk_data = sheets.get_open_risk()
+        pending_trades = risk_data.get('trades', [])
         
         if risk_data['count'] == 0:
             msg = "📊 RISK ĐANG MỞ\n\n"
@@ -792,41 +793,80 @@ async def open_risk(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             msg = "📊 RISK ĐANG MỞ\n\n"
             msg += f"🎯 TỔNG RISK: {risk_data['total']}%\n"
-            msg += f"📝 {risk_data['count']} lệnh\n\n"
+            msg += f"📝 Số lệnh: {risk_data['count']}\n\n"
             
             # Theo thị trường
-            msg += "📍 THEO THỊ TRƯỜNG:\n"
-            markets = ['Hàng hóa', 'Tiền tệ', 'Stock Việt', 'Stock Mỹ']
-            for market in markets:
-                risk = risk_data['market_count'].get(market, 0)
-                if risk > 0:
-                    msg += f"  • {market:12} {risk:5.2f}%\n"
+            if risk_data.get('market_count'):
+                msg += "📍 THEO THỊ TRƯỜNG:\n"
+                for market, risk in risk_data['market_count'].items():
+                    msg += f"  • {market}: {risk}%\n"
+                msg += "\n"
             
-            msg += "\n📊 THEO KIỂU TRADE:\n"
-            styles = ['Swing', 'Daytrading', 'Scalping']
-            for style in styles:
-                risk = risk_data['style_count'].get(style, 0)
-                if risk > 0:
-                    msg += f"  • {style:12} {risk:5.2f}%\n"
+            # Theo kiểu trade
+            if risk_data.get('style_count'):
+                msg += "📊 THEO KIỂU TRADE:\n"
+                for style, risk in risk_data['style_count'].items():
+                    msg += f"  • {style}: {risk}%\n"
+                msg += "\n"
             
-            # Liệt kê trades (giới hạn 10)
-            msg += "\n📋 CHI TIẾT CÁC LỆNH:\n"
-            for idx, trade in enumerate(risk_data['trades'][:10], 1):
-                msg += f"{idx}. {trade.get('Ticker')} {trade.get('Hướng')} "
-                msg += f"{trade.get('Entry')} | Risk: {trade.get('Risk%')}%\n"
+            # Chi tiết trades (giới hạn 10)
+            if pending_trades:
+                msg += "📋 CHI TIẾT LỆNH:\n"
+                for idx, trade in enumerate(pending_trades[:10], 1):
+                    ticker = trade.get('Ticker', 'N/A')
+                    direction = trade.get('Hướng', 'N/A')
+                    risk = trade.get('Risk%', 0)
+                    msg += f"{idx}. {ticker} {direction} - {risk}%\n"
+                
+                if len(pending_trades) > 10:
+                    msg += f"\n... và {len(pending_trades) - 10} lệnh khác"
         
-        keyboard = [[InlineKeyboardButton("🔄 Refresh", callback_data='open_risk')],
-                    [InlineKeyboardButton("« Menu", callback_data='main_menu')]]
+        # Add timestamp to force message difference on refresh
+        from datetime import datetime
+        import pytz
+        from config import TIMEZONE
+        tz = pytz.timezone(TIMEZONE)
+        now = datetime.now(tz).strftime('%H:%M:%S')
+        msg += f"\n\n🔄 Cập nhật: {now}"
+        
+        keyboard = [
+            [InlineKeyboardButton("🔄 Refresh", callback_data='open_risk')],
+            [InlineKeyboardButton("« Menu", callback_data='main_menu')]
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await query.edit_message_text(text=msg, reply_markup=reply_markup, parse_mode='Markdown')
+        # Try to edit message, catch if not modified
+        try:
+            await query.edit_message_text(
+                text=msg,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            if "message is not modified" in str(e).lower():
+                # Silently ignore - user already has the latest data
+                pass
+            else:
+                # Re-raise other errors
+                raise
         
     except Exception as e:
         print(f"❌ Error in open_risk: {e}")
-        await query.edit_message_text(
-            text=f"❌ Lỗi: {e}\n\nQuay lại /start",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("« Menu", callback_data='main_menu')]])
-        )
+        try:
+            await query.edit_message_text(
+                text=f"❌ Lỗi: {e}\n\nQuay lại /start",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("« Menu", callback_data='main_menu')]
+                ])
+            )
+        except:
+            # If can't edit, send new message
+            await query.message.reply_text(
+                text=f"❌ Lỗi: {e}\n\nQuay lại /start",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("« Menu", callback_data='main_menu')]
+                ])
+            )
 
 
 # === SCHEDULED RISK REPORT ===
