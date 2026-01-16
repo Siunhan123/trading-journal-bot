@@ -7,7 +7,13 @@ from sheets_handler import SheetsHandler
 from datetime import datetime, timedelta
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import warnings
 
+# Suppress PTBUserWarning
+warnings.filterwarnings('ignore', category=UserWarning, module='telegram')
+
+# Rest of code...
+from config import BOT_TOKEN, ADMIN_USER_ID, TIMEZONE, REPORT_HOURS, REPORT_MINUTE
 # Logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
