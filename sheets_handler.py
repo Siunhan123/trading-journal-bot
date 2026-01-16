@@ -64,7 +64,7 @@ class SheetsHandler:
             trade_data['ticker'],
             trade_data['entry'],
             trade_data['sl'],
-            trade_data['risk'],
+            trade_data['risk'],  # GHI SỐ THUẦN, VÍ DỤ: 2.5
             trade_data.get('chart', ''),
             trade_data.get('reason', ''),
             '',  # TP
@@ -75,14 +75,14 @@ class SheetsHandler:
         self.sheet.append_row(row)
         return next_id
     
-        def get_pending_trades(self):
+    def get_pending_trades(self):
         """Get all pending trades"""
         try:
             records = self.sheet.get_all_records()
             pending = []
             for r in records:
                 if r.get('Trạng thái') == 'Pending':
-                    # Fix: Convert Risk% to float
+                    # FIX: Convert Risk% to float
                     try:
                         r['Risk%'] = float(r.get('Risk%', 0) or 0)
                     except:
@@ -90,9 +90,8 @@ class SheetsHandler:
                     pending.append(r)
             return pending
         except Exception as e:
-            print(f"Error getting pending trades: {e}")
+            print(f"❌ Error getting pending trades: {e}")
             return []
-
     
     def get_trade_by_id(self, trade_id):
         """Get trade details by ID"""
@@ -196,6 +195,41 @@ class SheetsHandler:
             'be': len(be_trades)
         }
     
+    def get_stats_by_category(self, category, start_date=None, end_date=None):
+        """Get stats breakdown by category (Thị trường or Kiểu)"""
+        records = self.sheet.get_all_records()
+        
+        # Filter by date
+        if start_date:
+            records = [r for r in records if r.get('Timestamp', '') >= start_date]
+        if end_date:
+            records = [r for r in records if r.get('Timestamp', '') <= end_date]
+        
+        closed = [r for r in records if r.get('Trạng thái') in ['Closed', 'BE']]
+        
+        # Group by category
+        grouped = {}
+        for trade in closed:
+            key = trade.get(category, 'Unknown')
+            if key not in grouped:
+                grouped[key] = []
+            grouped[key].append(trade)
+        
+        # Calculate stats for each group
+        result = {}
+        for key, trades in grouped.items():
+            wins = [t for t in trades if float(t.get('PnL_R', 0) or 0) > 0]
+            total_pnl = sum([float(t.get('PnL_R', 0) or 0) for t in trades])
+            winrate = len(wins) / len(trades) * 100 if trades else 0
+            
+            result[key] = {
+                'winrate': round(winrate, 1),
+                'pnl': round(total_pnl, 2),
+                'trades': len(trades)
+            }
+        
+        return result
+    
     def get_open_risk(self):
         """Get total open risk and breakdown by market/style"""
         pending = self.get_pending_trades()
@@ -216,5 +250,6 @@ class SheetsHandler:
             'total': round(total_risk, 2),
             'count': len(pending),
             'market_count': {k: round(v, 2) for k, v in by_market.items()},
-            'style_count': {k: round(v, 2) for k, v in by_style.items()}
+            'style_count': {k: round(v, 2) for k, v in by_style.items()},
+            'trades': pending  # ← THÊM TRADES LIST
         }
