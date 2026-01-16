@@ -75,10 +75,24 @@ class SheetsHandler:
         self.sheet.append_row(row)
         return next_id
     
-    def get_pending_trades(self):
+        def get_pending_trades(self):
         """Get all pending trades"""
-        records = self.sheet.get_all_records()
-        return [r for r in records if r.get('Trạng thái') == 'Pending']
+        try:
+            records = self.sheet.get_all_records()
+            pending = []
+            for r in records:
+                if r.get('Trạng thái') == 'Pending':
+                    # Fix: Convert Risk% to float
+                    try:
+                        r['Risk%'] = float(r.get('Risk%', 0) or 0)
+                    except:
+                        r['Risk%'] = 0.0
+                    pending.append(r)
+            return pending
+        except Exception as e:
+            print(f"Error getting pending trades: {e}")
+            return []
+
     
     def get_trade_by_id(self, trade_id):
         """Get trade details by ID"""
