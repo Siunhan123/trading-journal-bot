@@ -136,27 +136,33 @@ class SheetsHandler:
         return True
     
     def calculate_new_risk(self, entry, old_sl, new_sl, old_risk, direction):
-        """Calculate new risk when SL is moved"""
-        entry = float(entry)
-        old_sl = float(old_sl)
-        new_sl = float(new_sl)
-        old_risk = float(old_risk)
-        
-        # Free risk if SL moved past entry
-        if direction == 'BUY' and new_sl >= entry:
-            return 0.0
-        if direction == 'SELL' and new_sl <= entry:
-            return 0.0
-        
-        # Calculate risk based on distance
-        old_distance = abs(entry - old_sl)
-        new_distance = abs(entry - new_sl)
-        
-        if old_distance == 0:
+        """Calculate new risk % after moving SL"""
+        try:
+            entry = float(entry)
+            old_sl = float(old_sl)
+            new_sl = float(new_sl)
+            old_risk = float(old_risk)
+            
+            if direction == 'BUY':
+                old_distance = entry - old_sl
+                new_distance = entry - new_sl
+            else:  # SELL
+                old_distance = old_sl - entry
+                new_distance = new_sl - entry
+            
+            if old_distance == 0:
+                return 0
+            
+            # Calculate new risk proportionally
+            new_risk = (new_distance / old_distance) * old_risk
+            
+            # FIX: Return value directly, NO multiplication
+            return round(new_risk, 2)
+            
+        except Exception as e:
+            print(f"❌ Error calculating risk: {e}")
             return old_risk
-        
-        new_risk = old_risk * (new_distance / old_distance)
-        return round(new_risk, 2)
+
     
     def get_stats(self, start_date=None, end_date=None):
         """Get trading statistics for a period"""
