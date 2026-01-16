@@ -6,7 +6,7 @@ import json
 import os
 import base64
 
-class SheetsHandler:
+
     def __init__(self):
     scope = ['https://spreadsheets.google.com/feeds',
              'https://www.googleapis.com/auth/drive']
