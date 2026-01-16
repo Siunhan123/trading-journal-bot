@@ -707,14 +707,12 @@ async def period_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Get stats
     stats = sheets.get_stats(start, end)
     
-    report = (
-        f"📊 *BÁO CÁO {period_text}*\n"
-        "───────────────\n\n"
-        f"📈 Winrate: *{stats['winrate']}%* "
-        f"({stats['wins']}W-{stats['losses']}L-{stats['be']}BE)\n"
-        f"💰 Tổng PnL: *{stats['total_pnl']:+.2f}R*\n"
-        f"📊 Số lệnh: *{stats['total_trades']}*\n"
-    )
+    report = f"📊 BÁO CÁO {period_text}\n\n"
+    report += f"Winrate: {stats['winrate']}%\n"
+    report += f"{stats['wins']}W-{stats['losses']}L-{stats['be']}BE\n"
+    report += f"Tổng PnL: {stats['total_pnl']}R\n"  # ← FIX: Bỏ .2f nếu đã round
+    report += f"Số lệnh: {stats['total_trades']}\n"
+
     
     detail_buttons = [
         [InlineKeyboardButton("📊 Chi tiết Thị trường", callback_data=f"detail_market_{period}"),
@@ -834,9 +832,11 @@ async def open_risk(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # === SCHEDULED RISK REPORT ===
 
 async def send_scheduled_risk_report(application: Application):
-    """Send risk report at scheduled times"""
+    """Send risk report at scheduled times - Show PENDING trades"""
     try:
         risk_data = sheets.get_open_risk()
+        pending_trades = risk_data.get('trades', [])  # Get pending trades list
+        
         tz = pytz.timezone(TIMEZONE)
         now = datetime.now(tz)
         time_str = now.strftime("%d/%m/%Y - %H:%M JST")
@@ -850,30 +850,31 @@ async def send_scheduled_risk_report(application: Application):
             report = "📊 BÁO CÁO RISK ĐANG MỞ\n"
             report += f"🕒 {time_str}\n\n"
             report += f"🎯 TỔNG RISK: {risk_data['total']}%\n"
-            report += f"📝 {risk_data['count']} lệnh\n\n"
+            report += f"📝 Số lệnh đang mở: {risk_data['count']}\n\n"
             
             # Theo thị trường
             report += "📍 THEO THỊ TRƯỜNG:\n"
-            markets = ['Hàng hóa', 'Tiền tệ', 'Stock Việt', 'Stock Mỹ']
-            for market in markets:
-                risk = risk_data['market_count'].get(market, 0)
-                if risk > 0:
-                    report += f"  • {market:12} {risk:5.2f}%\n"
+            for market, risk in risk_data.get('market_count', {}).items():
+                report += f"  • {market}: {risk}%\n"
             
             report += "\n📊 THEO KIỂU TRADE:\n"
-            styles = ['Swing', 'Daytrading', 'Scalping']
-            for style in styles:
-                risk = risk_data['style_count'].get(style, 0)
-                if risk > 0:
-                    report += f"  • {style:12} {risk:5.2f}%\n"
+            for style, risk in risk_data.get('style_count', {}).items():
+                report += f"  • {style}: {risk}%\n"
             
-            # Liệt kê lệnh (tối đa 10)
+            # CHI TIẾT LỆNH ĐANG MỞ (PENDING)
             report += "\n📋 CÁC LỆNH ĐANG MỞ:\n"
-            for idx, trade in enumerate(risk_data['trades'][:10], 1):
-                report += f"{idx}. {trade.get('Ticker')} {trade.get('Hướng')} "
-                report += f"{trade.get('Entry')} | Risk: {trade.get('Risk%')}%\n"
+            for idx, trade in enumerate(pending_trades[:10], 1):
+                ticker = trade.get('Ticker', 'N/A')
+                direction = trade.get('Hướng', 'N/A')
+                entry = trade.get('Entry', 'N/A')
+                sl = trade.get('SL', 'N/A')
+                risk = trade.get('Risk%', 0)
+                
+                report += f"{idx}. {ticker} {direction} @ {entry}\n"
+                report += f"   SL: {sl} | Risk: {risk}%\n"
             
-            report += "\n💡 Xem chi tiết: /risk"
+            if len(pending_trades) > 10:
+                report += f"\n... và {len(pending_trades) - 10} lệnh khác"
         
         # Send to admin
         await application.bot.send_message(
@@ -885,6 +886,7 @@ async def send_scheduled_risk_report(application: Application):
         
     except Exception as e:
         logger.error(f"❌ Error sending scheduled report: {e}")
+
 
 
 # === CANCEL HANDLER ===
